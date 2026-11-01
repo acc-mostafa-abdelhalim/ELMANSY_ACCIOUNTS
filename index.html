@@ -164,7 +164,7 @@ function paid(i){return i.pay.reduce(function(a,x){return a+x.a},0)}
 function rem(i){return tot(i)-paid(i)}
 function cl(id){return S.c.find(function(c){return c.id===id})||{name:'—'}}
 function tag(i){var r=rem(i);return r<=0?'<span class="tag t-ok">مدفوعة</span>':paid(i)>0?'<span class="tag t-part">مدفوعة جزئيًا</span>':'<span class="tag t-bad">غير مدفوعة</span>'}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function go(n,id){if(n!=='inv'&&n!=='edit')BK=null;if(n!=='new')NEWC=0;V={n:n,id:id};JP=false;if(n==='stm'||n==='sst'){F1='';F2=''}if(n==='edit'){D=S.i.find(function(x){return x.id===id}).items.map(function(x){return{d:x.d,q:x.q,p:x.p}})}else if(n==='new')D=[{d:'',q:1,p:0}];draw();window.scrollTo(0,0)}
 function draw(){head();
  ['dash','new','cli','acc','hr','rep','set'].forEach(function(k){$('n-'+k).className=(V.n===k||(k==='new'&&(V.n==='sal'||V.n==='inv'||V.n==='edit'))||((V.n==='stm'||V.n==='sst')&&k==='cli')||((V.n==='emp'||V.n==='slip')&&k==='hr'))?'on':''});
@@ -494,7 +494,7 @@ function lbl(k){return k.slice(5)+'/'+k.slice(2,4)}
 function agg(){var m={};function g(k){return m[k]||(m[k]={rev:0,pur:0,ex:0,ci:0,co:0,bill:0})}
  S.i.forEach(function(i){if(!isC(i)){var x=g(i.date.slice(0,7));x.rev+=sub(i)-disc(i);x.bill+=tot(i)}i.pay.forEach(function(p){if(p.ac)g(p.date.slice(0,7)).ci+=p.a})});
  BL().forEach(function(b){if(!isC(b))g(b.date.slice(0,7)).pur+=tot(b);b.pay.forEach(function(p){if(p.ac)g(p.date.slice(0,7)).co+=p.a})});
- PR().forEach(function(r){g(r.m).ex+=(r.base||0)+(r.ot||0)+(r.bon||0)-(r.abs||0)-(r.late||0)-(r.ded||0);r.paid.forEach(function(p){g(p.date.slice(0,7)).co+=p.a})});
+ PR().forEach(function(r){if(!emp(r.eid))return;g(r.m).ex+=(r.base||0)+(r.ot||0)+(r.bon||0)-(r.abs||0)-(r.late||0)-(r.ded||0);r.paid.forEach(function(p){g(p.date.slice(0,7)).co+=p.a})});
  LN().forEach(function(l){g(l.date.slice(0,7)).co+=l.a});HR().forEach(function(h){if(h.t==='lrep')g(h.date.slice(0,7)).ci+=h.a});
  EX().forEach(function(x){var a=g(x.date.slice(0,7));a.ex+=x.a;a.co+=x.a});return m}
 function age(list,key){var T=new Date(today()),rows={};list.forEach(function(x){var r=rem(x);if(r<=0.005)return;var d=Math.floor((T-new Date(x.date))/864e5),b=d<=30?0:d<=60?1:d<=90?2:3;(rows[x[key]]=rows[x[key]]||[0,0,0,0])[b]+=r});return rows}
@@ -662,14 +662,15 @@ function addHr(){var e=emp(+$('he').value),t=$('ht').value,q=+$('hq').value||0,a
  if(!a){var dr=(+e.sal||0)/30,hr=dr/8;a=t==='abs'?dr*q:t==='late'?hr/60*q:t==='ot'?hr*1.5*q:0}
  a=Math.round(a*100)/100;if(!(a>0))return toast('أدخلي الكمية أو المبلغ.');HR().push({id:Date.now(),eid:e.id,date:d,t:t,q:q,a:a,n:$('hn').value.trim()});autoPay(d.slice(0,7));save();draw();toast('تم تسجيل '+HT[t]+' بمبلغ '+M(a))}
 function delHr(id){var h0=HR().find(function(x){return x.id===id});S.hr=HR().filter(function(x){return x.id!==id});if(h0)autoPay(h0.date.slice(0,7));save();draw()}
-function vPayroll(){var rs=PR().filter(function(r){return r.m===HM}),h='<div class="card"><div class="g2"><div><label>الشهر</label><input type="month" value="'+HM+'" onchange="HM=this.value||HM;draw()"></div><div style="align-self:end"><button class="btn" onclick="genPay(HM)">'+(rs.length?'تحديث':'حساب')+' رواتب الشهر</button></div></div></div>';
+function vPayroll(){var orph=PR().filter(function(r){return !emp(r.eid)}),rs=PR().filter(function(r){return r.m===HM&&emp(r.eid)}),h='<div class="card"><div class="g2"><div><label>الشهر</label><input type="month" value="'+HM+'" onchange="HM=this.value||HM;draw()"></div><div style="align-self:end"><button class="btn" onclick="genPay(HM)">'+(rs.length?'تحديث':'حساب')+' رواتب الشهر</button></div></div></div>';
+ if(orph.length)h+='<div class="card noprint"><div class="sub">يوجد '+orph.length+' سجل راتب لموظفين غير موجودين في القائمة (مخفية من الكشف). حذفها يلغي أي دفعات مسجلة عليها.</div><div class="actions"><button class="btn sec" onclick="purgeOrphans()">حذف هذه السجلات</button></div></div>';
  if(!rs.length)return h+'<div class="card empty">لم يتم حساب رواتب هذا الشهر بعد. اضغطي «حساب رواتب الشهر» لتظهر الخصومات والسلف.</div>';
  var T=[0,0,0,0,0,0,0];h+='<div class="paper doc"><div class="ph">'+brand()+'<div style="text-align:end"><div class="big" style="font-size:20px">كشف الرواتب</div><div class="sub">شهر '+HM+'</div></div></div><div class="scroll"><table><tr><th>الموظف</th><th>الأساسي</th><th>إضافات</th><th>خصومات</th><th>قسط سلفة</th><th>رصيد سابق</th><th>المستحق</th><th>المدفوع</th><th>المتبقي</th></tr>';
  rs.forEach(function(r){var v=[r.base,r.ot+r.bon,r.abs+r.late+r.ded,r.adv,r.prev,r.due,pd(r)];v.forEach(function(x,i){T[i]+=x});T[6]+=0;h+='<tr class="lk" onclick="go(\'slip\','+r.id+')"><td>'+esc(eName(r.eid))+'</td>'+v.map(function(x){return'<td>'+M(x)+'</td>'}).join('')+'<td><b>'+M(rm(r))+'</b></td></tr>'});
  var rt=T[5]-T[6];h+='<tr><td><b>الإجمالي</b></td>'+T.slice(0,7).map(function(x){return'<td><b>'+M(x)+'</b></td>'}).join('')+'<td><b>'+M(rt)+'</b></td></tr></table></div><div class="due2"><span>إجمالي المتبقي (يُرحَّل للشهر القادم)</span><span>'+M(rt)+'</span></div></div>';
  return h+'<div class="card noprint"><h2>دفع المتبقي للجميع</h2><label>من حساب</label><select id="pall">'+accOpts()+'</select><div class="actions"><button class="btn" onclick="payAll()">دفع المتبقي لكل الموظفين</button><button class="btn sec" onclick="payCsv()">تصدير CSV</button><button class="btn sec" onclick="docImg(function(x){saveImg(x,\'payroll.png\')})">حفظ كصورة</button><button class="btn sec" onclick="window.print()">طباعة / PDF</button></div></div>'}
-function payAll(){var ac=+$('pall').value,n=0;PR().filter(function(r){return r.m===HM}).forEach(function(r){var a=rm(r);if(a>0.005){r.paid.push({date:today(),a:a,ac:ac});n++}});if(!n)return toast('لا يوجد متبقي للدفع.');save();draw();toast('تم دفع '+n+' راتب')}
-function payCsv(){var R=[['الشهر','الموظف','الأساسي','أوفر تايم','مكافآت','غياب','تأخير','خصومات','قسط سلفة','رصيد سابق','المستحق','المدفوع','المتبقي']];PR().filter(function(r){return r.m===HM}).forEach(function(r){R.push([r.m,eName(r.eid),r.base,r.ot,r.bon,r.abs,r.late,r.ded,r.adv,r.prev,r.due,pd(r),rm(r)])});
+function payAll(){var ac=+$('pall').value,n=0;PR().filter(function(r){return r.m===HM&&emp(r.eid)}).forEach(function(r){var a=rm(r);if(a>0.005){r.paid.push({date:today(),a:a,ac:ac});n++}});if(!n)return toast('لا يوجد متبقي للدفع.');save();draw();toast('تم دفع '+n+' راتب')}
+function payCsv(){var R=[['الشهر','الموظف','الأساسي','أوفر تايم','مكافآت','غياب','تأخير','خصومات','قسط سلفة','رصيد سابق','المستحق','المدفوع','المتبقي']];PR().filter(function(r){return r.m===HM&&emp(r.eid)}).forEach(function(r){R.push([r.m,eName(r.eid),r.base,r.ot,r.bon,r.abs,r.late,r.ded,r.adv,r.prev,r.due,pd(r),rm(r)])});
  (window.claude?claude.use('downloads'):Promise.resolve(null)).then(function(dl){if(!dl)throw 0;return dl.save({filename:'payroll-'+HM+'.csv',data:csv(R)})}).then(function(){toast('تم حفظ الملف')}).catch(function(){toast('تعذر حفظ الملف')})}
 function vSlip(){var r=PR().find(function(x){return x.id===V.id});if(!r)return'';var e=emp(r.eid)||{name:'—'},its=HR().filter(function(x){return x.eid===r.eid&&x.date.slice(0,7)===r.m&&x.t!=='lrep'}).sort(function(a,b){return a.date<b.date?-1:1});
  var L=[['الراتب الأساسي',r.base,1],['+ أوفر تايم',r.ot],['+ مكافآت',r.bon],['− غياب',r.abs],['− تأخير',r.late],['− خصومات',r.ded],['− قسط سلفة',r.adv]],rem0=rm(r);
@@ -697,6 +698,7 @@ function supOpts(){var L=SP().filter(function(s){return !s.cid||!S.c.some(functi
 function ensureCli(sid){var s=SP().find(function(x){return x.id===sid});if(!s)return 0;var c=s.cid&&S.c.find(function(x){return x.id===s.cid});if(c)return c.id;var id=Date.now()+7;S.c.push({id:id,name:s.name,phone:s.phone||'',email:s.email||''});s.cid=id;return id}
 function resolveCid(v){v=String(v);return v.indexOf('s:')===0?ensureCli(+v.slice(2)):+v}
 function invForSup(sid){var c=ensureCli(sid);save();NEWC=c;go('new')}
+function purgeOrphans(){var n=PR().filter(function(r){return !emp(r.eid)}).length;if(!n)return;if(!delOk(-7))return;S.pr=PR().filter(function(r){return emp(r.eid)});S.hr=HR().filter(function(h){return emp(h.eid)});S.ln=LN().filter(function(l){return emp(l.eid)});save();draw();toast('تم حذف '+n+' سجل')}
 var _pr=window.print;
 window.print=function(){var d=document.querySelector('.doc');if(!d)return;
  var html='<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(document.title)+'</title><style>'+document.querySelector('style').textContent+'body,html{background:#fff!important;color:#000}main{padding-bottom:20px}</style></head><body><main>'+d.outerHTML+'<div class="noprint" style="text-align:center;margin-top:12px"><button class="btn" onclick="window.print()">طباعة / حفظ PDF</button></div></main></body></html>';
